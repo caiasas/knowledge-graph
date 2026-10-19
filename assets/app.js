@@ -32,7 +32,7 @@
   }
   function nowId(prefix) { return prefix + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
 
-  var BUILD = "2026-10-19.2130";
+  var BUILD = "2026-10-19.2150";
   var STORE_KEY = "kg.data.v1";
   var THEME_KEY = "kg.theme";
   var PALETTE = ["#F0B429", "#38BDF8", "#A78BFA", "#34D399", "#FB7185", "#FB923C", "#22D3EE", "#A3E635",
