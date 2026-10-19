@@ -328,7 +328,7 @@
   function setNodeRadius(v, r) {
     v.r = r;
     v.disc.setAttribute("r", r.toFixed(2));
-    v.halo.setAttribute("r", (r * 1.7).toFixed(2));
+    v.halo.setAttribute("r", (r * 1.35).toFixed(2));
     v.ring.setAttribute("r", (r + 6).toFixed(2));
     v.label.setAttribute("y", (r + 15).toFixed(2));
     v.glyph.setAttribute("font-size", Math.max(11, r * 0.66).toFixed(1));
@@ -419,7 +419,7 @@
     });
     var cats = S.data.categories.filter(function (c) { return counts[c.name]; });
     var n = cats.length;
-    var radii = cats.map(function (c) { return 46 + 30 * Math.sqrt(counts[c.name]); });
+    var radii = cats.map(function (c) { return 46 + 36 * Math.sqrt(counts[c.name]); });
     var R = 210;
     if (n > 1) {
       for (var i = 0; i < n; i++) {
@@ -428,10 +428,18 @@
       }
     }
     CAT_CENTERS = {};
+    var vw = stage.clientWidth || 1200, vh = stage.clientHeight || 800;
+    var portrait = vh > vw * 1.15;
     cats.forEach(function (c, i) {
-      var ang = -Math.PI / 2 + i * Math.PI * 2 / n;
-      var cx = n > 1 ? Math.cos(ang) * R : 0;
-      var cy = n > 1 ? Math.sin(ang) * R : 0;
+      var ang, sx = 1, sy = 1;
+      if (n === 2) {
+        ang = portrait ? (-Math.PI / 2 + i * Math.PI) : (i * Math.PI);
+      } else {
+        ang = -Math.PI / 2 + i * Math.PI * 2 / n;
+        if (portrait) { sx = 0.72; sy = 1; } else { sx = 1; sy = 0.78; }
+      }
+      var cx = n > 1 ? Math.cos(ang) * R * sx : 0;
+      var cy = n > 1 ? Math.sin(ang) * R * sy : 0;
       var arr = byCat[c.name];
       CAT_CENTERS[c.name] = { x: cx, y: cy, r: radii[i], color: catColor(c.name), count: arr.length };
       arr.forEach(function (node, k) {
@@ -484,7 +492,7 @@
           var b = V[list[j].id];
           var dx = b.x - a.x, dy = b.y - a.y;
           var d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-          var minD = a.r + b.r + 22;
+          var minD = a.r + b.r + 34;
           if (d < minD) {
             var push = (minD - d) * 0.52;
             var ux = dx / d, uy = dy / d;
@@ -522,7 +530,7 @@
           var b = V[list[j].id];
           var dx = b.x - a.x, dy = b.y - a.y;
           var d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-          var minD = a.r + b.r + 18;
+          var minD = a.r + b.r + 30;
           if (d < minD) {
             var push = (minD - d) * 0.5;
             var ux = dx / d, uy = dy / d;
