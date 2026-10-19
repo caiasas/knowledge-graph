@@ -90,6 +90,13 @@ function pullPeer() {
   if (!PEER || syncing) return;
   syncing = true;
   var req = require("http").get(PEER + "/api/data", { timeout: 3000 }, function (res) {
+    if (res.statusCode === 404) {
+      res.resume();
+      syncing = false;
+      var seed = readLocal();
+      if (seed) pushPeer(seed);
+      return;
+    }
     if (res.statusCode !== 200) { res.resume(); syncing = false; return; }
     var body = "";
     res.setEncoding("utf8");
