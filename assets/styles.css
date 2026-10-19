@@ -1051,3 +1051,7 @@ html.perf .panel, html.perf .filters, html.perf .zoombar, html.perf .crumbs {
 }
 html.perf .edge { stroke-width: 1.1; }
 html.perf .node { shape-rendering: optimizeSpeed; }
+
+/* 层级标签：核心/一级更醒目 */
+.node .label.lvl0 { font-size: 13.5px; font-weight: 700; }
+.node .label.lvl1 { font-size: 13px; font-weight: 600; }

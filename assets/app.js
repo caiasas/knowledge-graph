@@ -32,7 +32,7 @@
   }
   function nowId(prefix) { return prefix + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
 
-  var BUILD = "2026-10-19.2230";
+  var BUILD = "2026-10-19.2310";
   var STORE_KEY = "kg.data.v1";
   var THEME_KEY = "kg.theme";
   var PALETTE = ["#F0B429", "#38BDF8", "#A78BFA", "#34D399", "#FB7185", "#FB923C", "#22D3EE", "#A3E635",
@@ -317,6 +317,9 @@
 
       glyph.textContent = firstChar(node.name);
       label.textContent = node.name;
+      var lv = (S.levels && S.levels[node.id] != null) ? S.levels[node.id] : 2;
+      if (lv === 0) label.classList.add("lvl0");
+      else if (lv === 1) label.classList.add("lvl1");
 
       g.appendChild(halo); g.appendChild(disc); g.appendChild(ring);
       g.appendChild(glyph); g.appendChild(label);
@@ -353,7 +356,9 @@
     var m = String(name).trim();
     if (!m) return "?";
     var c = m.charAt(0);
-    return /[a-z]/i.test(c) ? c.toUpperCase() : c;
+    if (!/[a-z]/i.test(c)) return c;
+    var letters = m.match(/^[A-Za-z0-9+.#_-]{1,2}/);
+    return letters ? letters[0] : c.toUpperCase();
   }
 
   function setNodeRadius(v, r) {
@@ -394,9 +399,10 @@
       var v = V[n.id];
       if (!v || !nodeVisible(n)) return;
       if (v.el.classList.contains("faded")) { v.el.classList.add("hide-label"); return; }
-      list.push({ n: n, v: v, deg: neighborIds(n.id).length });
+      var lvl = (S.levels && S.levels[n.id] != null) ? S.levels[n.id] : 2;
+      list.push({ n: n, v: v, deg: neighborIds(n.id).length, lvl: lvl });
     });
-    list.sort(function (a, b) { return b.deg - a.deg; });
+    list.sort(function (a, b) { return a.lvl !== b.lvl ? a.lvl - b.lvl : b.deg - a.deg; });
     var boxes = [];
     list.forEach(function (it) {
       var nr = it.v.r * k + 3;
@@ -433,7 +439,7 @@
           if (!(box.x2 < b.x1 || box.x1 > b.x2 || box.y2 < b.y1 || box.y1 > b.y2)) { hit = true; break; }
         }
       }
-      var pinned = it.n.id === S.selectedId || it.n.id === S.focusId;
+      var pinned = it.n.id === S.selectedId || it.n.id === S.focusId || it.lvl <= 1;
       it.v.el.classList.toggle("hide-label", hit && !pinned);
       if (!hit) boxes.push(box);
     });
