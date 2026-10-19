@@ -226,3 +226,30 @@ git push -u origin main
 `dist/knowledge_graph.zip` 已经打好（约 47KB），专门给 Netlify / Cloudflare 这类“拖拽上传”的托管用。
 
 > 提醒：GitHub Public 仓库的页面和示例数据对所有人可见；知识内容涉密就不要用公开仓库，改用局域网或私有部署。
+
+
+---
+
+## 8. 云同步（用 GitHub 仓库当数据库）
+
+数据文件是仓库根目录的 `data.json`。应用通过 GitHub API 读写它，所有设备共用一份数据。
+
+### 开启步骤（每台设备一次）
+
+1. 打开应用 → 右上角 `⋮` → **云同步**；
+2. 填：所有者 `caiasas`、仓库 `knowledge-graph`、分支 `main`、文件 `data.json`；
+3. 粘贴一个 **Fine-grained token**（写入必需）：
+   - GitHub → Settings → Developer settings → **Fine-grained tokens** → Generate new token
+   - Repository access：**Only select repositories** → 选 `knowledge-graph`
+   - Permissions → Repository permissions → **Contents: Read and write**
+   - 生成后复制 `github_pat_...`
+4. 点「保存并同步」。状态点在顶栏：绿=正常、黄=同步中、红=失败、灰=只读。
+
+### 行为
+
+- 每次修改后 **1.2 秒**自动推送到仓库；
+- 有 Token 的设备每 **20 秒**拉一次；没 Token 的设备只读（5 分钟拉一次，避免触发未认证限流）；
+- 冲突策略：**最后写入者赢**，写入前基于文件 sha 校验，被抢先修改会自动重取再写；
+- Token 只存在本机浏览器的 localStorage，不会写进仓库。
+
+> 注意：仓库是 Public 时，`data.json` 里的知识内容对所有人可见。需要私密内容就把仓库设为 Private，但免费账号的 Pages 不支持私有仓库（需 GitHub Pro）。
