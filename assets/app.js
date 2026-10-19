@@ -32,6 +32,7 @@
   }
   function nowId(prefix) { return prefix + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
 
+  var BUILD = "2026-10-19.2130";
   var STORE_KEY = "kg.data.v1";
   var THEME_KEY = "kg.theme";
   var PALETTE = ["#F0B429", "#38BDF8", "#A78BFA", "#34D399", "#FB7185", "#FB923C", "#22D3EE", "#A3E635",
@@ -1608,7 +1609,7 @@
       '<div class="field full" style="margin-top:16px"><label>关系 links</label><div class="hint-line">每条关系 = <code>{ type, to, note }</code>：type 为关系名（包含/前置/依赖/相关/对比/应用），to 为目标知识 id，note 为补充说明。反向关系会自动补全显示。</div></div>',
       '<pre style="margin-top:14px;padding:14px;border-radius:12px;border:1px solid var(--line);background:color-mix(in srgb, var(--bg) 60%, transparent);overflow:auto;font-family:var(--font-mono);font-size:11.5px;line-height:1.6;color:var(--ink-2)">' + esc(sample) + "</pre>",
       "</div>",
-      '<div class="modal-foot"><span class="hint-line">数据保存在浏览器 localStorage，换设备请用导出/导入。</span><span class="spacer"></span><button type="button" class="btn" data-close>知道了</button></div>',
+      '<div class="modal-foot"><span class="hint-line">数据保存在浏览器 localStorage，换设备请用导出/导入。 · 版本 ' + BUILD + '</span><span class="spacer"></span><button type="button" class="btn" data-close>知道了</button></div>',
       "</div>"
     ].join(""));
   }
@@ -2489,7 +2490,7 @@
     if (!S.nodes.length) updateEmptyState();
 
     if (/debug=1/.test(location.search)) {
-      window.__kg = {
+      window.__kg = { version: BUILD,
         data: function () { return S.data; }, save: saveData, sync: sync, pull: syncPull,
         state: function () { return { mode: S.mode, focusId: S.focusId, animating: S.animating, settling: S.settling, noAnim: document.documentElement.classList.contains("no-anim"), perf: document.documentElement.classList.contains("perf") }; },
         node: function (id) { var v = V[id]; return v ? { x: v.x, y: v.y, tx: v.tx, ty: v.ty, moving: v.moving, r: v.r, tr: v.tr } : null; }
