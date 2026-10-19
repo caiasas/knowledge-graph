@@ -164,6 +164,7 @@
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(S.data));
       storageOK = true;
+      if (typeof scheduleLanPush === "function") scheduleLanPush();
       if (typeof schedulePush === "function") schedulePush();
     } catch (e) {
       storageOK = false;
@@ -882,7 +883,7 @@
       S.trail = [id];
     }
     computeFocusTargets();
-    if (document.documentElement.classList.contains("no-anim")) {
+    if (document.documentElement.classList.contains("no-anim") || document.documentElement.classList.contains("perf")) {
       snapToTargets();
     } else {
       beginTween(focusSet(), 520);
@@ -948,8 +949,10 @@
     S.view.user = false;
     S.autoFitted = false;
 
-    var instant = document.documentElement.classList.contains("no-anim");
-    if (instant) {
+    var noAnim = document.documentElement.classList.contains("no-anim");
+    var perf = document.documentElement.classList.contains("perf");
+
+    if (noAnim) {
       snapToTargets();
       fitView(false, true);
       S.needsPaint = true;
@@ -974,11 +977,19 @@
         gc.style.transition = "opacity .3s linear " + Math.round(S.nodes.length * step * 0.5) + "ms";
         gc.style.opacity = "0";
       }
-      beginTween(S.nodes.map(function (n) { return n.id; }), 460, function (v, idx) { return idx * step; });
-      S.settling = true;
-      S.animating = true;
-      S.needsPaint = true;
-      fitView(true, true, 620);
+      if (perf) {
+        // 低配/高分屏：位置直接到位，只保留分批渐显，避免逐帧重绘
+        snapToTargets();
+        fitView(false, true);
+        S.needsPaint = true;
+        paint(true);
+      } else {
+        beginTween(S.nodes.map(function (n) { return n.id; }), 460, function (v, idx) { return idx * step; });
+        S.settling = true;
+        S.animating = true;
+        S.needsPaint = true;
+        fitView(true, true, 620);
+      }
       requestAnimationFrame(function () {
         S.nodes.forEach(function (n) { var v = V[n.id]; if (v) v.el.style.opacity = ""; });
         S.links.forEach(function (l) { l.el.style.opacity = ""; });
@@ -2054,6 +2065,79 @@
   }
 
 
+  /* ======================= 15.4 局域网存储 ======================= */
+  var lan = { available: false, timer: 0, base: "" };
+
+  function lanFetch(url, opts, ms) {
+    return new Promise(function (resolve, reject) {
+      var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      var t = setTimeout(function () { if (ctrl) ctrl.abort(); reject(new Error("timeout")); }, ms || 2500);
+      fetch(url, Object.assign({ cache: "no-store" }, opts || {}, ctrl ? { signal: ctrl.signal } : {}))
+        .then(function (r) { clearTimeout(t); resolve(r); })
+        .catch(function (e) { clearTimeout(t); reject(e); });
+    });
+  }
+
+  async function lanPull() {
+    try {
+      var r = await lanFetch(lan.base + "/api/data", {}, 2500);
+      if (!r.ok) return null;
+      return { data: await r.json() };
+    } catch (e) { return null; }
+  }
+
+  function scheduleLanPush() {
+    if (!lan.available) return;
+    clearTimeout(lan.timer);
+    lan.timer = setTimeout(function () {
+      var payload = JSON.parse(JSON.stringify(S.data));
+      payload.updatedAt = Date.now();
+      S.data.updatedAt = payload.updatedAt;
+      lanFetch(lan.base + "/api/data", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }, 4000).catch(function () {});
+    }, 700);
+  }
+
+  async function lanBoot() {
+    var ping;
+    try { ping = await lanFetch(lan.base + "/api/ping", {}, 2000); } catch (e) { ping = null; }
+    if (!ping || !ping.ok) { lan.available = false; return; }
+    lan.available = true;
+    var remote = await lanPull();
+    if (!remote) {
+      scheduleLanPush();
+      if (!sync.cfg) {
+        var d0 = $("#sync-dot");
+        if (d0) { d0.hidden = false; d0.className = "sync-dot ok"; d0.title = "局域网存储：已连接"; }
+      }
+      return;
+    }
+    var remoteAt = Number(remote.data.updatedAt || 0);
+    var localAt = Number(S.data.updatedAt || 0);
+    if (remoteAt > localAt) {
+      S.suppressPush = true;
+      S.data = normalize(remote.data);
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(S.data)); } catch (e) {}
+      rebuild();
+      buildGraph();
+      renderFilters();
+      S.suppressPush = false;
+      if (!S.selectedId) fitView(false);
+      toast("已载入服务器上的数据");
+    } else if (localAt > remoteAt) {
+      scheduleLanPush();
+    }
+    var dot = $("#sync-dot");
+    if (dot && !sync.cfg) {
+      dot.hidden = false;
+      dot.className = "sync-dot ok";
+      dot.title = "局域网存储：已连接";
+    }
+  }
+
   /* ======================= 15.5 GitHub 云同步 ======================= */
   var SYNC_KEY = "kg.sync.v1";
   var sync = { cfg: null, sha: null, status: "off", timer: 0, poll: 0, busy: false, retry: 0 };
@@ -2103,7 +2187,16 @@
     sync.status = kind;
     var dot = $("#sync-dot");
     if (!dot) return;
-    if (kind === "off") { dot.hidden = true; return; }
+    if (kind === "off") {
+      if (typeof lan !== "undefined" && lan.available) {
+        dot.hidden = false;
+        dot.className = "sync-dot ok";
+        dot.title = "局域网存储：已连接";
+      } else {
+        dot.hidden = true;
+      }
+      return;
+    }
     dot.hidden = false;
     dot.className = "sync-dot " + ({ ok: "ok", busy: "busy", err: "err", ro: "ro" }[kind] || "");
     dot.title = kind === "ok" ? "云同步正常" : kind === "busy" ? "同步中…" : kind === "err" ? ("同步失败：" + (msg || "")) : "只读（未配置 Token）";
@@ -2274,6 +2367,10 @@
   function init() {
     try {
       if (window.matchMedia && window.matchMedia("(hover: none)").matches) document.documentElement.classList.add("touch");
+      var lowEnd = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
+        (navigator.deviceMemory && navigator.deviceMemory <= 4) ||
+        (window.devicePixelRatio >= 2 && window.matchMedia && window.matchMedia("(hover: none)").matches);
+      if (lowEnd) document.documentElement.classList.add("perf");
       FORCE_STATIC = /(^|[?&])static=1/.test(location.search);
       if (FORCE_STATIC) document.documentElement.classList.add("no-anim");
       if (localStorage.getItem("kg.lite") === "1") applyLite(true, false);
@@ -2318,6 +2415,8 @@
 
     bindEvents();
     setupInstall();
+    lan.base = location.origin;
+    lanBoot();
     startSync();
     svg.classList.add("ready");
     loop();

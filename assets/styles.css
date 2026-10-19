@@ -1037,3 +1037,16 @@ html.lite .glass, html.lite .panel, html.lite .topbar {
 .sync-dot.err { background: #F87171; }
 .sync-dot.ro { background: #94A3B8; }
 .sync-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
+
+/* ---------- 性能档：高分屏平板/低配设备自动启用 ---------- */
+html.perf .node .halo { display: none; }
+html.perf .stage { background-image: none; }
+html.perf body::after { display: none; }
+html.perf .stage::before { display: none; }
+html.perf .node .label { stroke-width: 2.5px; }
+html.perf .cluster-label { display: none; }
+html.perf .panel, html.perf .filters, html.perf .zoombar, html.perf .crumbs {
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .28);
+}
+html.perf .edge { stroke-width: 1.1; }
+html.perf .node { shape-rendering: optimizeSpeed; }
