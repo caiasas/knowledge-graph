@@ -339,7 +339,7 @@
       var v = V[n.id];
       if (!v) return;
       if (S.mode === "focus" && v.labelAng != null) {
-        var rr = (v.tr || v.r) + 16;
+        var rr = (v.labelR || 0) * 0 + (v.tr || v.r) + 16;
         var dx = Math.cos(v.labelAng) * rr;
         var dy = Math.sin(v.labelAng) * rr + 5;
         v.label.setAttribute("x", dx.toFixed(1));
@@ -356,13 +356,6 @@
   }
 
   function updateNodeLabels() {
-    if (S.mode === "focus") {
-      S.nodes.forEach(function (n) {
-        var v = V[n.id];
-        if (v) v.el.classList.remove("hide-label");
-      });
-      return;
-    }
     var k = S.view.k;
     var list = [];
     S.nodes.forEach(function (n) {
@@ -384,9 +377,22 @@
     list.forEach(function (it) {
       var wpx = Math.max(30, it.n.name.length * 12.6) * k + 8;
       var hpx = 17 * k;
-      var cx = S.view.x + it.v.x * k;
-      var cy = S.view.y + (it.v.y + it.v.r + 15) * k;
-      var box = { x1: cx - wpx / 2, y1: cy - hpx / 2, x2: cx + wpx / 2, y2: cy + hpx / 2 };
+      var lx = it.v.x, ly = it.v.y + it.v.r + 15;
+      if (it.v.labelAng != null) {
+        var lrr = (it.v.tr || it.v.r) + 16;
+        lx = it.v.x + Math.cos(it.v.labelAng) * lrr;
+        ly = it.v.y + Math.sin(it.v.labelAng) * lrr + 5;
+      }
+      var cx = S.view.x + lx * k;
+      var cy = S.view.y + ly * k;
+      var anchor = "middle";
+      if (it.v.labelAng != null) {
+        var co = Math.cos(it.v.labelAng);
+        if (co > 0.3) anchor = "start";
+        else if (co < -0.3) anchor = "end";
+      }
+      var x1 = anchor === "start" ? cx : anchor === "end" ? cx - wpx : cx - wpx / 2;
+      var box = { x1: x1, y1: cy - hpx / 2, x2: x1 + wpx, y2: cy + hpx / 2 };
       var hit = false;
       if (k >= 0.40) {
         for (var i = 0; i < boxes.length; i++) {
@@ -657,21 +663,41 @@
     cv.tx = 0; cv.ty = 0; cv.tr = 46; cv.labelAng = Math.PI / 2;
 
     var count = nbrs.length;
-    var R = clamp(150 + count * 15, 190, 360);
+    var R = clamp(170 + count * 13, 200, 430);
     if (stage.clientWidth < 520) R = Math.min(R, 148);
-    S.focusR = R;
-    var start = -Math.PI / 2;
-    var step = count > 0 ? (Math.PI * 2) / count : 0;
+    var outerR = R;
+    var staggered = count > 14;
 
-    nbrs.forEach(function (id, i) {
-      var v = V[id];
-      if (!v) return;
-      var ang = start + step * i;
-      v.tx = Math.cos(ang) * R;
-      v.ty = Math.sin(ang) * R;
-      v.tr = nodeRadius(S.byId[id]);
-      v.labelAng = ang;
+    /* 按分类分组，组间留缺口：同一条分支聚成一段弧，看起来像树杈 */
+    var groups = [];
+    var index = {};
+    nbrs.forEach(function (id) {
+      var cat = S.byId[id].category;
+      if (!index[cat]) { index[cat] = []; groups.push(index[cat]); }
+      index[cat].push(id);
     });
+    var gap = groups.length > 1 ? 0.09 : 0;
+    var usable = Math.PI * 2 - gap * groups.length;
+    var cursor = -Math.PI / 2;
+
+    groups.forEach(function (g) {
+      var span = usable * (g.length / count);
+      g.forEach(function (id, i) {
+        var v = V[id];
+        if (!v) return;
+        var ang = cursor + span * ((i + 0.5) / g.length);
+        var r = R;
+        if (staggered && g.length > 6 && i % 2 === 1) r = R + 115;
+        if (r > outerR) outerR = r;
+        v.tx = Math.cos(ang) * r;
+        v.ty = Math.sin(ang) * r;
+        v.tr = nodeRadius(S.byId[id]);
+        v.labelAng = ang;
+        v.labelR = r;
+      });
+      cursor += span + gap;
+    });
+    S.focusR = outerR;
 
     S.nodes.forEach(function (n) {
       if (n.id === center || nbrs.indexOf(n.id) >= 0) return;
@@ -686,6 +712,9 @@
     gRings.textContent = "";
     if (count > 1) {
       gRings.appendChild(svgEl("circle", { cx: 0, cy: 0, r: R, fill: "none", stroke: "currentColor", "stroke-width": "1", "stroke-dasharray": "2 10", opacity: ".12" }));
+      if (staggered && outerR > R + 1) {
+        gRings.appendChild(svgEl("circle", { cx: 0, cy: 0, r: outerR, fill: "none", stroke: "currentColor", "stroke-width": "1", "stroke-dasharray": "2 10", opacity: ".08" }));
+      }
     }
   }
 
