@@ -2066,7 +2066,7 @@
 
 
   /* ======================= 15.4 局域网存储 ======================= */
-  var lan = { available: false, timer: 0, base: "" };
+  var lan = { available: false, timer: 0, base: "", poll: 0 };
 
   function lanFetch(url, opts, ms) {
     return new Promise(function (resolve, reject) {
@@ -2106,6 +2106,18 @@
     try { ping = await lanFetch(lan.base + "/api/ping", {}, 2000); } catch (e) { ping = null; }
     if (!ping || !ping.ok) { lan.available = false; return; }
     lan.available = true;
+    clearInterval(lan.poll);
+    lan.poll = setInterval(function () {
+      if (document.hidden || !$("#modal-root").hidden) return;
+      lanPull().then(function (r) {
+        if (!r) return;
+        var at = Number(r.data.updatedAt || 0);
+        if (at > Number(S.data.updatedAt || 0) + 800) {
+          adoptRemote(r.data);
+          toast("已同步局域网上的修改");
+        }
+      });
+    }, 10000);
     var remote = await lanPull();
     if (!remote) {
       scheduleLanPush();

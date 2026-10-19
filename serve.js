@@ -11,6 +11,7 @@ const ROOT = __dirname;
 const PORT = Number(process.env.PORT || 8777);
 const DATA_FILE = path.join(ROOT, "data.json");
 const DATA_BAK = path.join(ROOT, "data.bak.json");
+const PEER = String(process.env.PEER || "").replace(/\/+$/, "");
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -76,6 +77,64 @@ function handleApi(req, res) {
   }
 
   send(res, 405, '{"error":"method not allowed"}', "application/json");
+}
+
+/* ---------- 两台服务器互相同步（可选：设置 PEER 环境变量） ---------- */
+var syncing = false;
+
+function readLocal() {
+  try { return JSON.parse(fs.readFileSync(DATA_FILE, "utf8")); } catch (e) { return null; }
+}
+
+function pullPeer() {
+  if (!PEER || syncing) return;
+  syncing = true;
+  var req = require("http").get(PEER + "/api/data", { timeout: 3000 }, function (res) {
+    if (res.statusCode !== 200) { res.resume(); syncing = false; return; }
+    var body = "";
+    res.setEncoding("utf8");
+    res.on("data", function (c) { body += c; });
+    res.on("end", function () {
+      syncing = false;
+      var remote;
+      try { remote = JSON.parse(body); } catch (e) { return; }
+      var remoteAt = Number(remote.updatedAt || 0);
+      var local = readLocal();
+      var localAt = Number((local && local.updatedAt) || 0);
+      if (remoteAt > localAt + 1500) {
+        if (local) { try { fs.copyFileSync(DATA_FILE, DATA_BAK); } catch (e) {} }
+        fs.writeFileSync(DATA_FILE, JSON.stringify(remote, null, 2), "utf8");
+        console.log("[peer] 收到对端更新 " + new Date(remoteAt).toISOString());
+      } else if (localAt > remoteAt + 1500) {
+        pushPeer(local);
+      }
+    });
+  });
+  req.on("error", function () { syncing = false; });
+  req.on("timeout", function () { req.destroy(); syncing = false; });
+}
+
+function pushPeer(local) {
+  var body = JSON.stringify(local);
+  var u = new URL(PEER + "/api/data");
+  var req = require("http").request({
+    hostname: u.hostname, port: u.port || 80, path: u.pathname,
+    method: "PUT", timeout: 4000,
+    headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }
+  }, function (res) {
+    res.resume();
+    if (res.statusCode === 200) console.log("[peer] 已推送到对端");
+  });
+  req.on("error", function () {});
+  req.on("timeout", function () { req.destroy(); });
+  req.write(body);
+  req.end();
+}
+
+if (PEER) {
+  console.log("  对端同步：" + PEER);
+  setInterval(pullPeer, 5000);
+  setTimeout(pullPeer, 1500);
 }
 
 http.createServer(function (req, res) {
