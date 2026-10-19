@@ -712,7 +712,6 @@
   function paint(force) {
     var i, v, n;
     S.edgeTick = (S.edgeTick || 0) + 1;
-    var skipEdges = !force && S.settling && (S.edgeTick % 2 === 1);
 
     for (i = 0; i < S.nodes.length; i++) {
       n = S.nodes[i];
@@ -732,8 +731,6 @@
       if (l.hidden) continue;
       var a = V[l.source], b = V[l.target];
       if (!a || !b) continue;
-      if (skipEdges && !a.moved && !b.moved && !l.dirty) continue;
-      if (!a.moved && !b.moved && !l.dirty) continue;
       var dx = b.x - a.x, dy = b.y - a.y;
       var d = Math.sqrt(dx * dx + dy * dy) || 1;
       var ux = dx / d, uy = dy / d;
