@@ -6,3 +6,21 @@ node_modules/
 data.json
 data.bak.json
 _apipush.mjs
+
+# 测试 / 浏览器缓存目录
+.ls*
+.l2*
+.lb_*
+.lv_*
+.hb_*
+.p_*
+.q_*
+.prof_*
+.tmp_*
+.shot_*
+.chk_*
+.dbg_*
+.lan_*
+.perf_*
+.sync_*
+.live_*

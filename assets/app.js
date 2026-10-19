@@ -32,7 +32,7 @@
   }
   function nowId(prefix) { return prefix + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
 
-  var BUILD = "2026-10-19.2310";
+  var BUILD = "2026-10-19.2350";
   var STORE_KEY = "kg.data.v1";
   var THEME_KEY = "kg.theme";
   var PALETTE = ["#F0B429", "#38BDF8", "#A78BFA", "#34D399", "#FB7185", "#FB923C", "#22D3EE", "#A3E635",
@@ -265,6 +265,10 @@
       l.pairIndex = pairCount[p];
       pairCount[p] += 1;
     });
+  }
+
+  function levelOf(n) {
+    return (S.levels && S.levels[n.id] != null) ? S.levels[n.id] : 2;
   }
 
   function catColor(name) { return S.catColors[name] || "#94A3B8"; }
@@ -1088,6 +1092,9 @@
       var v = V[n.id]; if (v) v.el.classList.toggle("selected", n.id === id);
     });
     highlightEdges(id);
+    $(".node-row").forEach(function (r) {
+      r.classList.toggle("on", r.getAttribute("data-id") === id);
+    });
     renderPanel();
   }
 
@@ -1241,6 +1248,35 @@
     var vis = S.nodes.filter(nodeVisible).length;
     var visEdges = S.links.filter(function (l) { return !isTypeHidden(l.type) && nodeVisible(S.byId[l.source]) && nodeVisible(S.byId[l.target]); }).length;
     $("#stats").innerHTML = "<span>" + vis + " 个节点</span><span>" + visEdges + " 条关系</span>";
+    renderNodeList();
+  }
+
+  function renderNodeList() {
+    var box = $("#node-list");
+    if (!box) return;
+    var html = [];
+    S.data.categories.forEach(function (c) {
+      var arr = S.nodes.filter(function (n) { return n.category === c.name; });
+      if (!arr.length) return;
+      arr.sort(function (a, b) {
+        var la = levelOf(a), lb = levelOf(b);
+        if (la !== lb) return la - lb;
+        return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
+      });
+      html.push('<div class="list-group">' + esc(c.name) + " · " + arr.length + "</div>");
+      arr.forEach(function (n) {
+        var lv = levelOf(n);
+        var names = ["核心", "一级", "二级", "三级"];
+        html.push(
+          '<button class="node-row' + (n.id === S.selectedId ? " on" : "") + '" data-id="' + esc(n.id) + '" style="--c:' + esc(catColor(n.category)) + '">' +
+          '<span class="nr-dot"></span>' +
+          '<span class="nr-name">' + esc(n.name) + "</span>" +
+          '<span class="nr-lvl">' + (names[lv] || "") + "</span>" +
+          "</button>"
+        );
+      });
+    });
+    box.innerHTML = html.join("");
   }
 
   function applyFilters() {
@@ -1931,6 +1967,36 @@
       enterFocus(v, true);
       selectNode(v);
     });
+
+    // 筛选 / 列表 切换
+    var tabs = $("#f-tabs");
+    if (tabs) {
+      tabs.addEventListener("click", function (e) {
+        var b = e.target.closest("[data-tab]");
+        if (!b) return;
+        var tab = b.getAttribute("data-tab");
+        var tabEls = tabs.querySelectorAll(".tab");
+        Array.prototype.forEach.call(tabEls, function (t) { t.classList.toggle("on", t === b); });
+        $("#filter-body").hidden = tab !== "filter";
+        $("#list-body").hidden = tab !== "list";
+        $("#filters-reset").style.visibility = tab === "filter" ? "" : "hidden";
+      });
+    }
+
+    var listBox = $("#node-list");
+    if (listBox) {
+      listBox.addEventListener("click", function (e) {
+        var row = e.target.closest(".node-row");
+        if (!row) return;
+        var id = row.getAttribute("data-id");
+        enterFocus(id, false);
+        selectNode(id);
+        if (window.innerWidth <= 1180) {
+          $("#filters").classList.remove("open");
+          $("#filters").style.display = "";
+        }
+      });
+    }
 
     // 筛选
     $("#filters").addEventListener("click", function (e) {

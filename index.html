@@ -112,7 +112,8 @@
         <h3>筛选</h3>
         <button class="chip-btn" id="filters-reset" type="button">重置</button>
       </div>
-      <div class="filters-body">
+      <div class="filters-scroll">
+      <div class="filters-body" id="filter-body">
         <div class="f-group">
           <div class="f-label">分类</div>
           <div class="chips" id="cat-chips"></div>
@@ -121,6 +122,11 @@
           <div class="f-label">关系类型</div>
           <div class="chips" id="type-chips"></div>
         </div>
+      </div>
+      <div class="filters-body list-body" id="list-body">
+        <div class="list-title">全部知识点</div>
+        <div id="node-list"></div>
+      </div>
       </div>
       <div class="filters-foot" id="stats"></div>
     </aside>
