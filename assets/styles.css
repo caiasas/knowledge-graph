@@ -1022,3 +1022,18 @@ html.lite .glass, html.lite .panel, html.lite .topbar {
   border: 1px solid var(--line);
   pointer-events: none;
 }
+
+/* 云同步状态点 */
+.sync-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--ink-3);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent);
+  transition: background .3s;
+  cursor: pointer;
+}
+.sync-dot.ok { background: #34D399; }
+.sync-dot.busy { background: #FBBF24; animation: pulse 1.4s infinite; }
+.sync-dot.err { background: #F87171; }
+.sync-dot.ro { background: #94A3B8; }
+.sync-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--ink-2); }

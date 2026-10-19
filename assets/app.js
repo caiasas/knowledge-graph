@@ -63,6 +63,7 @@
     focusR: 190,
     needsPaint: true,
     labelsDirty: true,
+    suppressPush: false,
     animating: false,
     lite: false,
     temp: 0,
@@ -140,6 +141,7 @@
       version: 1,
       title: String(d.title || "我的知识图谱"),
       subtitle: String(d.subtitle || ""),
+      updatedAt: Number(d.updatedAt || 0),
       categories: cats,
       relationTypes: types,
       nodes: nodes
@@ -162,6 +164,7 @@
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(S.data));
       storageOK = true;
+      if (typeof schedulePush === "function") schedulePush();
     } catch (e) {
       storageOK = false;
       toast("本次改动没能保存：浏览器禁止了本地存储（file:// 打开时常见）", true);
@@ -1609,6 +1612,8 @@
 
   /* ======================= 15. 事件绑定 ======================= */
   function bindEvents() {
+    var sdot = $("#sync-dot");
+    if (sdot) sdot.addEventListener("click", function () { syncDialog(); });
     var pointers = {};
     var drag = null;
     var pinch = null;
@@ -1910,6 +1915,7 @@
       '<button class="menu-item" data-m="export"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>导出 JSON</button>',
       '<button class="menu-item" data-m="import"><svg viewBox="0 0 24 24" fill="none"><path d="M12 21V9m0 0 4.5 4.5M12 9l-4.5 4.5M4 7V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>导入 JSON</button>',
       '<div class="menu-sep"></div>',
+      '<button class="menu-item" data-m="sync"><svg viewBox="0 0 24 24" fill="none"><path d="M20 12a8 8 0 0 1-13.6 5.7M4 12a8 8 0 0 1 13.6-5.7M4 19v-3h3M20 5v3h-3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>云同步 <span class="menu-state" style="margin-left:auto;font-size:11px;opacity:.6"></span></button>',
       '<button class="menu-item" data-m="install"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>安装到设备</button>',
       '<button class="menu-item" data-m="lite"><svg viewBox="0 0 24 24" fill="none"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>流畅模式 <span style="margin-left:auto;font-size:11px;opacity:.6" id="lite-state"></span></button>',
       '<button class="menu-item" data-m="help"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M9.6 9.2a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.8-.9 1.4v.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>数据格式说明</button>',
@@ -1918,11 +1924,14 @@
     document.body.appendChild(m);
     var ls = m.querySelector("#lite-state");
     if (ls) ls.textContent = S.lite ? "开" : "关";
+    var ms = m.querySelector(".menu-state");
+    if (ms) ms.textContent = sync.cfg ? (sync.cfg.token ? "已开启" : "只读") : "未配置";
     m.addEventListener("click", function (e) {
       var b = e.target.closest("[data-m]");
       if (!b) return;
       var act = b.getAttribute("data-m");
       m.remove();
+      if (act === "sync") { syncDialog(); return; }
       if (act === "install") { promptInstall(); return; }
       if (act === "lite") { applyLite(!S.lite, true); return; }
       if (act === "export") exportJSON();
@@ -2044,6 +2053,222 @@
     paint();
   }
 
+
+  /* ======================= 15.5 GitHub 云同步 ======================= */
+  var SYNC_KEY = "kg.sync.v1";
+  var sync = { cfg: null, sha: null, status: "off", timer: 0, poll: 0, busy: false, retry: 0 };
+
+  function b64encode(str) {
+    var bytes = new TextEncoder().encode(str);
+    var bin = "";
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+
+  function b64decode(b64) {
+    var bin = atob(String(b64).replace(/\s/g, ""));
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+
+  function loadSyncCfg() {
+    try {
+      var s = localStorage.getItem(SYNC_KEY);
+      if (s) return JSON.parse(s);
+    } catch (e) {}
+    return null;
+  }
+
+  function saveSyncCfg(cfg) {
+    try {
+      if (cfg) localStorage.setItem(SYNC_KEY, JSON.stringify(cfg));
+      else localStorage.removeItem(SYNC_KEY);
+    } catch (e) {}
+  }
+
+  function syncHeaders(cfg, json) {
+    var h = { "Accept": "application/vnd.github+json" };
+    if (json) h["Content-Type"] = "application/json";
+    if (cfg.token) h["Authorization"] = "Bearer " + cfg.token;
+    return h;
+  }
+
+  function syncUrl(cfg) {
+    return "https://api.github.com/repos/" + encodeURIComponent(cfg.owner) + "/" + encodeURIComponent(cfg.repo) +
+      "/contents/" + encodeURIComponent(cfg.path || "data.json") + "?ref=" + encodeURIComponent(cfg.branch || "main");
+  }
+
+  function setSyncStatus(kind, msg) {
+    sync.status = kind;
+    var dot = $("#sync-dot");
+    if (!dot) return;
+    if (kind === "off") { dot.hidden = true; return; }
+    dot.hidden = false;
+    dot.className = "sync-dot " + ({ ok: "ok", busy: "busy", err: "err", ro: "ro" }[kind] || "");
+    dot.title = kind === "ok" ? "云同步正常" : kind === "busy" ? "同步中…" : kind === "err" ? ("同步失败：" + (msg || "")) : "只读（未配置 Token）";
+  }
+
+  async function syncPullRaw(cfg) {
+    var res = await fetch(syncUrl(cfg), { headers: syncHeaders(cfg), cache: "no-store" });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    var j = await res.json();
+    var text = b64decode(j.content);
+    return { data: JSON.parse(text), sha: j.sha };
+  }
+
+  async function syncPush(attempt) {
+    if (!sync.cfg || !sync.cfg.token) return;
+    sync.busy = true;
+    setSyncStatus("busy");
+    try {
+      var payload = JSON.parse(JSON.stringify(S.data));
+      payload.updatedAt = Date.now();
+      S.data.updatedAt = payload.updatedAt;
+      var url = syncUrl(sync.cfg).replace(/\?.*$/, "");
+      var body = {
+        message: "sync: " + new Date().toISOString(),
+        content: b64encode(JSON.stringify(payload, null, 2)),
+        branch: sync.cfg.branch || "main"
+      };
+      if (sync.sha) body.sha = sync.sha;
+      var res = await fetch(url, { method: "PUT", headers: syncHeaders(sync.cfg, true), body: JSON.stringify(body) });
+      if (res.status === 409 && !attempt) {
+        var fresh = await syncPullRaw(sync.cfg);
+        sync.sha = fresh ? fresh.sha : null;
+        sync.busy = false;
+        return syncPush(1);
+      }
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      var j = await res.json();
+      sync.sha = j.content && j.content.sha;
+      setSyncStatus("ok");
+    } catch (e) {
+      setSyncStatus("err", e.message);
+    } finally {
+      sync.busy = false;
+    }
+  }
+
+  function schedulePush() {
+    if (!sync.cfg || !sync.cfg.token || S.suppressPush) return;
+    clearTimeout(sync.timer);
+    sync.timer = setTimeout(function () { syncPush(); }, 1200);
+  }
+
+  function adoptRemote(remote) {
+    S.suppressPush = true;
+    S.data = normalize(remote);
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(S.data)); } catch (e) {}
+    rebuild();
+    buildGraph();
+    renderFilters();
+    closePanel();
+    S.view.user = false;
+    S.autoFitted = false;
+    if (document.documentElement.classList.contains("no-anim")) fitView(false);
+    else { exitFocus(); }
+    S.suppressPush = false;
+  }
+
+  async function syncPull(silent) {
+    if (!sync.cfg) return;
+    if (sync.busy) return;
+    setSyncStatus(sync.cfg.token ? "busy" : "ro");
+    try {
+      var remote = await syncPullRaw(sync.cfg);
+      if (!remote) {
+        if (sync.cfg.token) await syncPush();
+        return;
+      }
+      sync.sha = remote.sha;
+      var remoteAt = Number(remote.data.updatedAt || 0);
+      var localAt = Number(S.data.updatedAt || 0);
+      if (remoteAt > localAt) {
+        adoptRemote(remote.data);
+        if (!silent) toast("已同步其他设备的修改");
+      } else if (localAt > remoteAt && sync.cfg.token) {
+        await syncPush();
+      }
+      setSyncStatus(sync.cfg.token ? "ok" : "ro");
+    } catch (e) {
+      setSyncStatus("err", e.message);
+    }
+  }
+
+  function startSync() {
+    sync.cfg = loadSyncCfg();
+    if (!sync.cfg) { setSyncStatus("off"); return; }
+    syncPull(true);
+    clearInterval(sync.poll);
+    sync.poll = setInterval(function () {
+      if (document.hidden || !$("#modal-root").hidden) return;
+      syncPull(true);
+    }, sync.cfg.token ? 20000 : 300000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) syncPull(true);
+    });
+  }
+
+  function syncDialog() {
+    var cfg = sync.cfg || { owner: "caiasas", repo: "knowledge-graph", branch: "main", path: "data.json", token: "" };
+    var state = sync.status === "ok" ? "已连接，正常同步" : sync.status === "err" ? "连接异常，检查仓库名 / Token 权限" : sync.cfg ? "已配置" : "未配置";
+    showModal([
+      '<form class="modal" id="sync-form">',
+      '<div class="modal-head"><h2>云同步</h2><span class="sub">数据存到 GitHub 仓库</span><span class="spacer"></span><button type="button" class="panel-close" data-close>✕</button></div>',
+      '<div class="modal-body">',
+      '<p class="p-text" style="margin-top:0;font-size:13px">多台设备打开同一个页面，读写仓库里的 <code>data.json</code>，改完 1 秒内自动推送，其他设备 20 秒内自动拉取。</p>',
+      '<div class="form-grid" style="margin-top:14px">',
+      '<div class="field"><label>仓库所有者</label><input class="input" name="owner" value="' + esc(cfg.owner) + '" placeholder="caiasas"></div>',
+      '<div class="field"><label>仓库名</label><input class="input" name="repo" value="' + esc(cfg.repo) + '" placeholder="knowledge-graph"></div>',
+      '<div class="field"><label>分支</label><input class="input" name="branch" value="' + esc(cfg.branch || "main") + '" placeholder="main"></div>',
+      '<div class="field"><label>数据文件</label><input class="input" name="path" value="' + esc(cfg.path || "data.json") + '" placeholder="data.json"></div>',
+      '<div class="field full"><label>访问令牌 Token <span class="req">*</span>（写入需要）</label><input class="input" name="token" type="password" autocomplete="off" value="' + esc(cfg.token || "") + '" placeholder="github_pat_... 或 ghp_..."><div class="hint-line">只保存在本机浏览器；建议用 Fine-grained token，只勾选该仓库的 <b>Contents: Read and write</b>。</div></div>',
+      '</div>',
+      '<div class="sync-row"><span>状态：</span><b>' + esc(state) + "</b></div>",
+      '<p class="hint-line" style="margin-top:12px">没有 Token 也能只读同步（任何设备都能拉到最新数据），但只有配置了 Token 的设备能把修改写回仓库。</p>',
+      '</div>',
+      '<div class="modal-foot">',
+      '<button type="button" class="btn danger" id="sync-off">关闭同步</button>',
+      '<span class="spacer"></span>',
+      '<button type="button" class="btn ghost" data-close>取消</button>',
+      '<button type="submit" class="btn primary">保存并同步</button>',
+      '</div>',
+      '</form>'
+    ].join(""));
+
+    $("#sync-off").addEventListener("click", function () {
+      saveSyncCfg(null);
+      sync.cfg = null;
+      sync.sha = null;
+      clearInterval(sync.poll);
+      setSyncStatus("off");
+      hideModal();
+      toast("已关闭云同步，数据只存本机");
+    });
+
+    $("#sync-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var f = e.target;
+      var next = {
+        owner: f.owner.value.trim(),
+        repo: f.repo.value.trim(),
+        branch: f.branch.value.trim() || "main",
+        path: f.path.value.trim() || "data.json",
+        token: f.token.value.trim()
+      };
+      if (!next.owner || !next.repo) { toast("请填写仓库所有者和仓库名", true); return; }
+      saveSyncCfg(next);
+      sync.cfg = next;
+      sync.sha = null;
+      hideModal();
+      toast("已保存，正在同步…");
+      syncPull(false);
+      startSync();
+    });
+  }
+
   /* ======================= 16. 启动 ======================= */
   function init() {
     try {
@@ -2092,6 +2317,7 @@
 
     bindEvents();
     setupInstall();
+    startSync();
     svg.classList.add("ready");
     loop();
 
@@ -2120,6 +2346,7 @@
     if (!S.nodes.length) updateEmptyState();
 
     if (/debug=1/.test(location.search)) {
+      window.__kg = { data: function () { return S.data; }, save: saveData, sync: sync, pull: syncPull };
       var badge = document.createElement("div");
       badge.className = "fps-badge";
       badge.textContent = "…";
