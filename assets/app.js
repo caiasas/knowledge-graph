@@ -32,7 +32,7 @@
   }
   function nowId(prefix) { return prefix + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
 
-  var BUILD = "2026-10-19.2150";
+  var BUILD = "2026-10-19.2230";
   var STORE_KEY = "kg.data.v1";
   var THEME_KEY = "kg.theme";
   var PALETTE = ["#F0B429", "#38BDF8", "#A78BFA", "#34D399", "#FB7185", "#FB923C", "#22D3EE", "#A3E635",
@@ -48,6 +48,7 @@
     typeOrder: [],
     links: [],
     nbrs: {},
+    levels: {},
     mode: "overview",
     focusId: null,
     trail: [],
@@ -97,6 +98,7 @@
         tags: Array.isArray(n.tags) ? n.tags.map(String) : splitList(n.tags),
         summary: String(n.summary || ""),
         content: String(n.content || ""),
+        level: (n.level === undefined || n.level === null || n.level === "") ? null : clamp(Number(n.level), 0, 3),
         links: []
       };
       if (seen[node.id]) node.id = node.id + "-" + i;
@@ -229,6 +231,32 @@
       });
     });
 
+    // 层级：显式 level 优先；否则按“包含”关系推导（根 0 / 中间 1 / 叶子 2）
+    S.levels = {};
+    var inc = {}, out = {};
+    S.links.forEach(function (l) {
+      if (l.type !== "包含") return;
+      out[l.source] = (out[l.source] || 0) + 1;
+      inc[l.target] = (inc[l.target] || 0) + 1;
+    });
+    var containCount = 0;
+    Object.keys(out).forEach(function (k) { containCount += out[k]; });
+    var degs = [];
+    S.nodes.forEach(function (n) { degs.push(neighborIds(n.id).length); });
+    degs.sort(function (a, b) { return b - a; });
+    var hi = degs[Math.floor(degs.length * 0.2)] || 0;
+    var mid = degs[Math.floor(degs.length * 0.5)] || 0;
+    S.nodes.forEach(function (n) {
+      if (n.level !== null && n.level !== undefined) { S.levels[n.id] = n.level; return; }
+      if (containCount >= 2) {
+        var i = inc[n.id] || 0, o = out[n.id] || 0;
+        S.levels[n.id] = (i === 0 && o > 0) ? 0 : (i > 0 && o > 0 ? 1 : 2);
+      } else {
+        var d = neighborIds(n.id).length;
+        S.levels[n.id] = d >= hi && hi > 0 ? 0 : (d >= mid && mid > 0 ? 1 : 2);
+      }
+    });
+
     // 同一对节点之间的多条边做弯曲偏移
     var pairCount = {};
     S.links.forEach(function (l) {
@@ -249,8 +277,11 @@
 
   /* ======================= 3. 图层构建 ======================= */
   function nodeRadius(n) {
-    var deg = neighborIds(n.id).length;
-    return clamp(14 + Math.sqrt(deg) * 5.4, 16, 33);
+    var lvl = S.levels && S.levels[n.id] != null ? S.levels[n.id] : 2;
+    if (lvl === 0) return 34;
+    if (lvl === 1) return 26;
+    if (lvl === 3) return 16;
+    return 20;
   }
 
   function buildGraph() {
@@ -1370,6 +1401,13 @@
       '<div class="modal-body">',
       '<div class="form-grid">',
       '<div class="field"><label>名称 <span class="req">*</span></label><input class="input" name="name" required value="' + esc(n.name) + '" placeholder="例如：注意力机制"></div>',
+      '<div class="field"><label>层级</label><select class="select" name="level">' +
+        '<option value="">自动（按包含关系推导）</option>' +
+        '<option value="0"' + (n.level === 0 ? " selected" : "") + '>核心 / 总纲</option>' +
+        '<option value="1"' + (n.level === 1 ? " selected" : "") + '>一级</option>' +
+        '<option value="2"' + (n.level === 2 ? " selected" : "") + '>二级 / 叶子</option>' +
+        '<option value="3"' + (n.level === 3 ? " selected" : "") + '>三级 / 细节</option>' +
+      '</select></div>' +
       '<div class="field"><label>分类 <span class="req">*</span></label><input class="input" name="category" list="cat-list" value="' + esc(n.category) + '" placeholder="选择或输入新分类"><datalist id="cat-list">' + catOptions + "</datalist></div>",
       '<div class="field full"><label>别名 / 英文名</label><input class="input" name="aliases" value="' + esc((n.aliases || []).join("，")) + '" placeholder="用逗号分隔，例如：Attention，注意力"></div>',
       '<div class="field full"><label>标签</label><input class="input" name="tags" value="' + esc((n.tags || []).join("，")) + '" placeholder="用逗号分隔，便于搜索"></div>',
@@ -1436,6 +1474,7 @@
       tags: splitList(form.tags.value),
       summary: form.summary.value.trim(),
       content: form.content.value.trim(),
+      level: form.level.value === "" ? null : Number(form.level.value),
       links: links
     };
 
