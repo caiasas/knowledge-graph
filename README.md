@@ -253,3 +253,23 @@ git push -u origin main
 - Token 只存在本机浏览器的 localStorage，不会写进仓库。
 
 > 注意：仓库是 Public 时，`data.json` 里的知识内容对所有人可见。需要私密内容就把仓库设为 Private，但免费账号的 Pages 不支持私有仓库（需 GitHub Pro）。
+
+
+---
+
+## 9. 安卓平板当服务器（Termux）
+
+不用电脑、不用外网，平板自己跑服务、自己用；同一 WiFi 下其他设备也能访问。
+
+1. 平板装 **Termux**（建议从 F-Droid 或 GitHub 安装，应用商店版本过旧）；
+2. 把整个项目文件夹拷到平板（数据线 / 网盘都行），例如 `/sdcard/Download/knowledge_graph`；
+   也可以直接在 Termux 里 `pkg install git && git clone https://github.com/caiasas/knowledge-graph.git`；
+3. 进目录运行：
+   ```bash
+   bash termux-setup.sh
+   ```
+   首次会自动装 Node.js 并申请存储权限，然后打印两个地址；
+4. Chrome 打开 `http://localhost:8777/`（localhost 属于安全上下文，**可以安装 PWA、可以离线**）→ 菜单「安装应用」；
+5. 装好之后，即使 Termux 停了、平板重启，主屏图标也能靠 Service Worker 缓存离线打开；要更新时再跑一次脚本。
+
+> 平板作为服务器时，数据存在平板的 Chrome 里；想让电脑也看到同一份数据，两种办法：让电脑访问 `http://<平板IP>:8777/`（数据仍在平板浏览器里，不共享），或者继续用「云同步」写回 GitHub 私有仓库。
