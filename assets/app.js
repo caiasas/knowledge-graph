@@ -297,9 +297,7 @@
     S.links.forEach(function (l) {
       var p = svgEl("path", { "class": "edge" + (S.typeMap[l.type] && S.typeMap[l.type].directed === false ? " related" : " directed") });
       p.style.setProperty("--hot", typeColor(l.type));
-      if (S.typeMap[l.type] && S.typeMap[l.type].directed !== false) {
-        p.setAttribute("marker-end", "url(#arrow)");
-      }
+      l.arrow = false;
       var t = svgEl("text", { "class": "edge-label" });
       t.textContent = l.type;
       gEdges.appendChild(p);
@@ -309,6 +307,11 @@
 
     applyFilters();
     layoutClusters(false);
+    if (S.mode === "focus" && S.focusId && S.byId[S.focusId]) {
+      computeFocusTargets();
+      snapToTargets();
+      applyModeClasses();
+    }
     S.needsPaint = true;
     S.autoFitted = false;
     updateNodeLabels();
@@ -739,6 +742,12 @@
       var off = l.pairIndex > 0 ? 0.10 + l.pairIndex * 0.10 : 0;
       var cx = (sx + ex) / 2 - uy * d * off;
       var cy = (sy + ey) / 2 + ux * d * off;
+      var wantArrow = S.mode === "focus" && d > 70 && S.typeMap[l.type] && S.typeMap[l.type].directed !== false;
+      if (l.arrow !== wantArrow) {
+        if (wantArrow) l.el.setAttribute("marker-end", "url(#arrow)");
+        else l.el.removeAttribute("marker-end");
+        l.arrow = wantArrow;
+      }
       var dStr = "M" + sx.toFixed(1) + "," + sy.toFixed(1) + " Q" + cx.toFixed(1) + "," + cy.toFixed(1) + " " + ex.toFixed(1) + "," + ey.toFixed(1);
       if (l.pd !== dStr) { l.el.setAttribute("d", dStr); l.pd = dStr; }
       if (S.mode === "focus") {
@@ -1014,6 +1023,7 @@
     var hot = {};
     S.links.forEach(function (l) {
       if (!id) { l.el.classList.remove("hot"); return; }
+      if (l.hidden) { l.el.classList.remove("hot"); return; }
       var on = l.source === id || l.target === id;
       l.el.classList.toggle("hot", on);
       if (on) hot[l.key] = true;
@@ -2130,14 +2140,7 @@
     var remoteAt = Number(remote.data.updatedAt || 0);
     var localAt = Number(S.data.updatedAt || 0);
     if (remoteAt > localAt) {
-      S.suppressPush = true;
-      S.data = normalize(remote.data);
-      try { localStorage.setItem(STORE_KEY, JSON.stringify(S.data)); } catch (e) {}
-      rebuild();
-      buildGraph();
-      renderFilters();
-      S.suppressPush = false;
-      if (!S.selectedId) fitView(false);
+      adoptRemote(remote.data);
       toast("已载入服务器上的数据");
     } else if (localAt > remoteAt) {
       scheduleLanPush();
@@ -2263,6 +2266,7 @@
   }
 
   function adoptRemote(remote) {
+    var prevFocus = S.mode === "focus" ? S.focusId : null;
     S.suppressPush = true;
     S.data = normalize(remote);
     try { localStorage.setItem(STORE_KEY, JSON.stringify(S.data)); } catch (e) {}
@@ -2272,9 +2276,10 @@
     closePanel();
     S.view.user = false;
     S.autoFitted = false;
-    if (document.documentElement.classList.contains("no-anim")) fitView(false);
-    else { exitFocus(); }
     S.suppressPush = false;
+    if (prevFocus && S.byId[prevFocus]) enterFocus(prevFocus, false);
+    else if (document.documentElement.classList.contains("no-anim")) fitView(false);
+    else exitFocus();
   }
 
   async function syncPull(silent) {
@@ -2458,7 +2463,11 @@
     if (!S.nodes.length) updateEmptyState();
 
     if (/debug=1/.test(location.search)) {
-      window.__kg = { data: function () { return S.data; }, save: saveData, sync: sync, pull: syncPull };
+      window.__kg = {
+        data: function () { return S.data; }, save: saveData, sync: sync, pull: syncPull,
+        state: function () { return { mode: S.mode, focusId: S.focusId, animating: S.animating, settling: S.settling, noAnim: document.documentElement.classList.contains("no-anim"), perf: document.documentElement.classList.contains("perf") }; },
+        node: function (id) { var v = V[id]; return v ? { x: v.x, y: v.y, tx: v.tx, ty: v.ty, moving: v.moving, r: v.r, tr: v.tr } : null; }
+      };
       var badge = document.createElement("div");
       badge.className = "fps-badge";
       badge.textContent = "…";
