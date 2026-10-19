@@ -2180,6 +2180,7 @@
       var remote = await syncPullRaw(sync.cfg);
       if (!remote) {
         if (sync.cfg.token) await syncPush();
+        else setSyncStatus("err", "私有仓库需要 Token 才能读取");
         return;
       }
       sync.sha = remote.sha;
@@ -2212,16 +2213,16 @@
   }
 
   function syncDialog() {
-    var cfg = sync.cfg || { owner: "caiasas", repo: "knowledge-graph", branch: "main", path: "data.json", token: "" };
+    var cfg = sync.cfg || { owner: "caiasas", repo: "knowledge-graph-data", branch: "main", path: "data.json", token: "" };
     var state = sync.status === "ok" ? "已连接，正常同步" : sync.status === "err" ? "连接异常，检查仓库名 / Token 权限" : sync.cfg ? "已配置" : "未配置";
     showModal([
       '<form class="modal" id="sync-form">',
-      '<div class="modal-head"><h2>云同步</h2><span class="sub">数据存到 GitHub 仓库</span><span class="spacer"></span><button type="button" class="panel-close" data-close>✕</button></div>',
+      '<div class="modal-head"><h2>云同步</h2><span class="sub">数据存到 GitHub 私有仓库</span><span class="spacer"></span><button type="button" class="panel-close" data-close>✕</button></div>',
       '<div class="modal-body">',
-      '<p class="p-text" style="margin-top:0;font-size:13px">多台设备打开同一个页面，读写仓库里的 <code>data.json</code>，改完 1 秒内自动推送，其他设备 20 秒内自动拉取。</p>',
+      '<p class="p-text" style="margin-top:0;font-size:13px">多台设备读写私有仓库 <code>knowledge-graph-data</code> 里的 <code>data.json</code>：改完约 1 秒推送，其他设备 20 秒内拉取。私有仓库必须填 Token 才能读取和写入。</p>',
       '<div class="form-grid" style="margin-top:14px">',
       '<div class="field"><label>仓库所有者</label><input class="input" name="owner" value="' + esc(cfg.owner) + '" placeholder="caiasas"></div>',
-      '<div class="field"><label>仓库名</label><input class="input" name="repo" value="' + esc(cfg.repo) + '" placeholder="knowledge-graph"></div>',
+      '<div class="field"><label>数据仓库</label><input class="input" name="repo" value="' + esc(cfg.repo) + '" placeholder="knowledge-graph-data"></div>',
       '<div class="field"><label>分支</label><input class="input" name="branch" value="' + esc(cfg.branch || "main") + '" placeholder="main"></div>',
       '<div class="field"><label>数据文件</label><input class="input" name="path" value="' + esc(cfg.path || "data.json") + '" placeholder="data.json"></div>',
       '<div class="field full"><label>访问令牌 Token <span class="req">*</span>（写入需要）</label><input class="input" name="token" type="password" autocomplete="off" value="' + esc(cfg.token || "") + '" placeholder="github_pat_... 或 ghp_..."><div class="hint-line">只保存在本机浏览器；建议用 Fine-grained token，只勾选该仓库的 <b>Contents: Read and write</b>。</div></div>',
